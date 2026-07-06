@@ -277,12 +277,24 @@ print(tunnel2.stdout)
 
 ### 3. Cập nhật Environment Variables
 
+**Lưu ý:** ngrok free tier hiện chỉ cho phép **1 tunnel/account**, nên các Option A–D ở trên (2 tunnel riêng cho vLLM và embedding) sẽ không chạy được nữa. Setup thực tế đang dùng — xem chi tiết trong `Note.md`:
+
+- Chạy thêm 1 FastAPI proxy nhỏ trên Kaggle (port 8000) path-route `/vllm/*` → vLLM (port 8001) và `/embed/*` → embedding service (port 8002), rồi chỉ mở **một** ngrok tunnel cho proxy đó.
+- `.env` trỏ `VLLM_NGROK_URL=<tunnel_url>/vllm/v1` và `EMBED_NGROK_URL=<tunnel_url>/embed` (khác domain nhưng cùng 1 tunnel gốc, khác path).
+- `api-gateway/main.py` gọi `f"{VLLM_URL}/chat/completions"` (không có `/v1` vì đã có sẵn trong `VLLM_NGROK_URL`).
+
 ```bash
 # Copy và chỉnh sửa file .env
 cp .env.example .env
-# Thay VLLM_NGROK_URL với URL từ Kaggle (ngrok hoặc cloudflared)
-# Thay EMBED_NGROK_URL nếu có embedding service
+# Thay VLLM_NGROK_URL với URL từ Kaggle (dạng <tunnel>/vllm/v1)
+# Thay EMBED_NGROK_URL với URL embedding (dạng <tunnel>/embed)
 # Thay LANGCHAIN_API_KEY với key của bạn
+```
+
+Sau khi đổi `.env`, phải recreate container để pick up giá trị mới:
+
+```bash
+docker compose up -d --force-recreate api-gateway
 ```
 
 ### 4. Deploy Prefect Flows
@@ -306,7 +318,7 @@ python scripts/01_ingest_to_kafka.py
 pytest smoke-tests/ -v
 ```
 
-Kỳ vọng: 5/5 tests passing
+Kỳ vọng: 8/8 tests passing (5 nhóm test, một số nhóm có >1 test case). Lưu ý: SLO của `test_full_inference_returns_200` đã chỉnh từ 2000ms lên 8000ms để phản ánh đúng latency thật của kiến trúc hybrid (Kaggle T4 + ngrok round-trip), xem `ANSWERS.md` câu 1.
 
 ### 7. Production Readiness Check
 
